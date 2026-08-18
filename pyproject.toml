@@ -1,0 +1,13 @@
+[project]
+name = "bi-speculator"
+version = "0.1.0"
+description = "Speculative decoding experiments: thinking-mode vs answer-mode acceptance"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.6",
+    "transformers>=4.53",
+    "accelerate>=1.0",
+]
+
+[tool.uv]
+package = false
