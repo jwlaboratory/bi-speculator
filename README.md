@@ -97,6 +97,33 @@ The gap is scale-invariant at head capacity and zero at full capacity for
 both targets; mode-conditioning failed a 5th and 6th time. The verdict
 holds across target scale.
 
+### Does it hold for DFlash (block-diffusion drafters)? Yes.
+
+`gpu/modal_dflash_train.py` fine-tunes z-lab/Qwen3-4B-DFlash-b16 directly
+(the DFlash training recipe is unreleased; this implements the paper's
+masked-block objective against their released architecture, hyperparameters
+from the proven sparklingtree DSpark recipe). Baseline eval reproduces the
+pretrained checkpoint's known acceptance (2.76 vs 2.66 accepted/block on
+thinking text), validating the loop. Matched 1.12M-token budgets,
+held-out block eval (n=224k think-region / 122k answer-region tokens):
+
+| variant       | think-region match | answer match | accept len think / direct |
+|---------------|--------------------|--------------|---------------------------|
+| pretrained    | 28.5%              | 35.6%        | 2.76 / 3.80               |
+| FT mixed      | 35.9%              | 38.8%        | 3.70 / 4.26               |
+| FT think-only | 36.7%              | 36.6%        | 3.63 / 3.98               |
+| FT answer-only| 29.8%              | 39.4%        | 3.15 / 4.33               |
+
+Same shape as the AR experiments: specialists beat the generalist on home
+turf by +0.5-0.8pt (real; DFlash's 5-layer drafter is capacity-constrained
+like our heads) but the whole-trace accept length of the think-specialist
+is *lower* than mixed in think mode (answer-region blocks drag it down),
+and the best case (answer-spec, direct mode) is +1.6% over mixed. Off-region
+penalties are large (answer-spec: -6.1pt on think region). Meanwhile mixed
+on-policy fine-tuning lifted the pretrained drafter +34% / +12% accept
+length — domain adaptation dwarfs specialization, on DFlash too.
+Fine-tuned drafters: bi-spec-data volume, /data/dflash_ft_{variant}/.
+
 ## DFlash on Modal GPUs (Qwen3-4B + z-lab/Qwen3-4B-DFlash-b16)
 
 `gpu/modal_dflash.py` (`modal run gpu/modal_dflash.py [--only dflash|baseline]`)
