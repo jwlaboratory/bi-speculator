@@ -24,7 +24,10 @@ import modal
 
 TARGET = "Qwen/Qwen3-1.7B"
 DRAFT = "Qwen/Qwen3-0.6B"
-TRACES = "/data/traces.jsonl"
+
+
+def traces_path(target: str) -> str:
+    return f"/data/traces-{target.split('/')[-1]}.jsonl"
 POOL_CAP = 900_000  # per-region cap on training examples
 
 image = (
@@ -70,9 +73,9 @@ def sim_accept(match, k=4):
     return accepted, cycles, n
 
 
-def load_traces(min_out_tokens=3):
+def load_traces(target: str, min_out_tokens=3):
     out = []
-    with open(TRACES) as f:
+    with open(traces_path(target)) as f:
         for line in f:
             t = json.loads(line)
             if len(t["output_ids"]) >= min_out_tokens:
@@ -84,7 +87,7 @@ def load_traces(min_out_tokens=3):
 
 
 @app.function(image=image, gpu="L40S", timeout=3600, volumes=volumes)
-def generate() -> dict:
+def generate(target: str = TARGET) -> dict:
     import random
 
     from datasets import load_dataset
@@ -98,9 +101,9 @@ def generate() -> dict:
     prompts = alp[:1250] + gsm[:1250]
     random.Random(1).shuffle(prompts)
 
-    llm = LLM(model=TARGET, max_model_len=4096, gpu_memory_utilization=0.85)
+    llm = LLM(model=target, max_model_len=4096, gpu_memory_utilization=0.85)
     counts = {}
-    with open(TRACES, "w") as f:
+    with open(traces_path(target), "w") as f:
         for thinking, max_tok in ((True, 1536), (False, 768)):
             msgs = [[{"role": "user", "content": p}] for p in prompts]
             outs = llm.chat(msgs, SamplingParams(temperature=0.0, max_tokens=max_tok),
@@ -184,7 +187,7 @@ def eval_agreement(preds_by_trace, open_id, close_id):
 
 
 @app.function(image=image, gpu="L40S", timeout=5400, memory=65536, volumes=volumes)
-def run_head(variant: str) -> dict:
+def run_head(variant: str, target: str = TARGET) -> dict:
     import random
 
     import torch
@@ -193,13 +196,13 @@ def run_head(variant: str) -> dict:
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     device = "cuda"
-    tok = AutoTokenizer.from_pretrained(TARGET)
+    tok = AutoTokenizer.from_pretrained(target)
     open_id = tok.convert_tokens_to_ids("<think>")
     close_id = tok.convert_tokens_to_ids("</think>")
     draft = AutoModelForCausalLM.from_pretrained(DRAFT, dtype=torch.bfloat16).to(device).eval()
     hidden_size = draft.config.hidden_size
 
-    traces = load_traces()
+    traces = load_traces(target)
     train_traces = [t for t in traces if not is_heldout(t["pid"])]
     held = [t for t in traces if is_heldout(t["pid"])]
     random.Random(0).shuffle(train_traces)
@@ -293,7 +296,7 @@ def run_head(variant: str) -> dict:
 
 
 @app.function(image=image, gpu="L40S", timeout=7200, memory=65536, volumes=volumes)
-def run_finetune(variant: str) -> dict:
+def run_finetune(variant: str, target: str = TARGET) -> dict:
     import random
 
     import torch
@@ -301,11 +304,11 @@ def run_finetune(variant: str) -> dict:
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     device = "cuda"
-    tok = AutoTokenizer.from_pretrained(TARGET)
+    tok = AutoTokenizer.from_pretrained(target)
     open_id = tok.convert_tokens_to_ids("<think>")
     close_id = tok.convert_tokens_to_ids("</think>")
 
-    traces = load_traces()
+    traces = load_traces(target)
     train_traces = [t for t in traces if not is_heldout(t["pid"])]
     held = [t for t in traces if is_heldout(t["pid"])]
     random.Random(0).shuffle(train_traces)
@@ -399,15 +402,15 @@ def run_finetune(variant: str) -> dict:
 
 
 @app.local_entrypoint()
-def main(stage: str = "all") -> None:
+def main(stage: str = "all", target: str = TARGET) -> None:
     results = {}
     if stage in ("generate", "all"):
-        results["generate"] = generate.remote()
+        results["generate"] = generate.remote(target)
     if stage in ("heads", "all"):
-        handles = {v: run_head.spawn(v) for v in ("mixed", "region", "think", "answer")}
+        handles = {v: run_head.spawn(v, target) for v in ("mixed", "region", "think", "answer")}
         results["heads"] = {v: h.get() for v, h in handles.items()}
     if stage in ("finetune", "all"):
-        handles = {v: run_finetune.spawn(v) for v in ("mixed", "think", "answer")}
+        handles = {v: run_finetune.spawn(v, target) for v in ("mixed", "think", "answer")}
         results["finetune"] = {v: h.get() for v, h in handles.items()}
     print("===RESULTS===")
     print(json.dumps(results, indent=2))

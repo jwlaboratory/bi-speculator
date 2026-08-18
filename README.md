@@ -80,6 +80,23 @@ Held-out next-token agreement with the target, per region:
    +1.1pt answer over baseline, tokens/forward 3.45 -> 3.57 at k=4), and
    mode-aware draft *length* (see DFlash per-position decay above).
 
+### Does target scale change the verdict? No.
+
+Same experiment rerun with target = Qwen3-8B (same 0.6B draft, so 5x less
+relative draft capacity — the case where specialization should help most if
+capacity interference were mode-specific). Specialist-minus-generalist gap
+on the home region:
+
+| capacity        | 1.7B target      | 8B target        |
+|-----------------|------------------|------------------|
+| head (~4M)      | +0.46 / +0.53 pt | +0.38 / +0.55 pt |
+| full model FT   | +0.16 / -0.29 pt | +0.04 / -0.07 pt |
+| region-bit head | +0.0 pt          | +0.0 pt          |
+
+The gap is scale-invariant at head capacity and zero at full capacity for
+both targets; mode-conditioning failed a 5th and 6th time. The verdict
+holds across target scale.
+
 ## DFlash on Modal GPUs (Qwen3-4B + z-lab/Qwen3-4B-DFlash-b16)
 
 `gpu/modal_dflash.py` (`modal run gpu/modal_dflash.py [--only dflash|baseline]`)
